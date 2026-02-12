@@ -47,40 +47,50 @@ export class SolanaBalanceProvider implements BalanceProvider {
     const newBalances: Balance[] = [];
 
     // Fetch native SOL balance
+    // Fetch native SOL balance (validate/trim address first)
     try {
-      const response = await fetch(this.solanaRpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getBalance",
-          params: [wallet.address],
-        }),
-      });
-      const rpcResponse = await response.json();
-      if (rpcResponse.error) throw new Error(rpcResponse.error.message);
-
-      const lamports = rpcResponse.result.value;
-      const solBalance = lamports / 1e9;
-      let solPrice = getPrice("SOL", priceInfo);
-      if (!solPrice || solPrice === 0) {
-        solPrice = await getPriceWithFallback("SOL", priceInfo);
-      }
-
-      if (solBalance > 0.00000001) {
-        const tokenId = `solana-${ZERO_ADDRESS}`;
-        newBalances.push({
-          id: `${wallet.id}-${tokenId}`,
-          walletId: wallet.id,
-          tokenId,
-          userId: null,
-          balance: solBalance.toFixed(4),
-          balanceUSD: (solBalance * solPrice).toFixed(2),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          previousBalances: [],
+      const addr = String(wallet.address || "").trim();
+      // Basic base58-ish validation (Solana pubkeys are base58, 32-44 chars typically)
+      const base58Regex = /^[A-HJ-NP-Za-km-z1-9]{32,44}$/;
+      if (!addr || !base58Regex.test(addr)) {
+        console.warn(`Skipping SOL balance fetch: invalid Solana address: "${addr}"`);
+      } else {
+        const response = await fetch(this.solanaRpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "getBalance",
+            params: [addr],
+          }),
         });
+        const rpcResponse = await response.json();
+        if (rpcResponse.error) {
+          console.error("Solana RPC error fetching balance:", rpcResponse.error);
+        } else {
+          const lamports = rpcResponse.result?.value || 0;
+          const solBalance = lamports / 1e9;
+          let solPrice = getPrice("SOL", priceInfo);
+          if (!solPrice || solPrice === 0) {
+            solPrice = await getPriceWithFallback("SOL", priceInfo);
+          }
+
+          if (solBalance > 0.00000001) {
+            const tokenId = `solana-${ZERO_ADDRESS}`;
+            newBalances.push({
+              id: `${wallet.id}-${tokenId}`,
+              walletId: wallet.id,
+              tokenId,
+              userId: null,
+              balance: solBalance.toFixed(4),
+              balanceUSD: (solBalance * solPrice).toFixed(2),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              previousBalances: [],
+            });
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to fetch SOL balance", error);
@@ -119,7 +129,7 @@ export class SolanaBalanceProvider implements BalanceProvider {
 
         const price = getPrice(token.symbol, priceInfo);
 
-        if (totalBalance > 0.00000001) {
+        if (totalBalance > 0) {
           return {
             id: `${wallet.id}-${token.id}`,
             walletId: wallet.id,

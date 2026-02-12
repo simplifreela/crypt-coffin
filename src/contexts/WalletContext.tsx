@@ -228,17 +228,19 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     type: WalletType,
     name: string,
   ) => {
-    const lowerCaseAddress = address.toLowerCase();
+    // Preserve the address casing as provided; perform case-insensitive duplicate checks.
+    const normalizedAddress = address;
+
     if (
-      wallets.some(
-        (w) => w.address.toLowerCase() === lowerCaseAddress && w.type === type,
+      wallets.some((w) =>
+        w.type === type && String(w.address).toLowerCase() === String(normalizedAddress).toLowerCase(),
       )
     ) {
       throw new Error("Wallet with this address and type already exists.");
     }
 
     const walletData: NewWallet = {
-      address: lowerCaseAddress,
+      address,
       type,
       name,
       isWatched: true,
@@ -265,8 +267,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const address = await signer.getAddress();
 
       const existing = wallets.find(
-        (w) =>
-          w.address.toLowerCase() === address.toLowerCase() && w.type === "evm",
+        (w) => String(w.address).toLowerCase() === String(address).toLowerCase() && w.type === "evm",
       );
       if (existing) {
         setActiveWallet(existing);
@@ -330,7 +331,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const { error: profileError } = await supabase.from("User").upsert(
         {
           id: data.user.id,
-          walletAddress: walletAddress.toLowerCase(),
+          walletAddress,
         },
         { onConflict: "id" },
       );
@@ -390,7 +391,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       // Auto-add connected wallet to user's wallets if not present
       try {
         const existing = wallets.find(
-          (w) => w.address.toLowerCase() === walletAddress.toLowerCase() && w.type === "evm",
+          (w) => String(w.address).toLowerCase() === String(walletAddress).toLowerCase() && w.type === "evm",
         );
         if (!existing) {
           const walletData: NewWallet = {
@@ -502,12 +503,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     const processedAddress =
       token.networkId === "solana" || token.networkId === "near"
         ? token.address
-        : token.address.toLowerCase();
+        : token.address;
 
-    const existingToken = tokens.find(
-      (t) =>
-        t.networkId === token.networkId &&
-        t.address.toLowerCase() === processedAddress,
+    const existingToken = tokens.find((t) =>
+      t.networkId === token.networkId &&
+      String(t.address).toLowerCase() === String(processedAddress).toLowerCase(),
     );
 
     if (existingToken) {
@@ -681,6 +681,19 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       initialBalancesFetched.current = true;
     }
   }, [wallets, loading, fetchBalances]);
+
+  // Ensure any wallets missing a balances entry get an initial fetch.
+  useEffect(() => {
+    if (wallets.length === 0) return;
+    for (const wallet of wallets) {
+      if (!balances.has(wallet.id)) {
+        // Kick off a fetch in background if we don't yet have a cached entry
+        fetchBalances(wallet).catch((e) => {
+          console.error(`Background fetch failed for wallet ${wallet.id}:`, e);
+        });
+      }
+    }
+  }, [wallets, balances, fetchBalances]);
 
   const value = {
     wallets,

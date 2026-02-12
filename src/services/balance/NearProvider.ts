@@ -81,7 +81,7 @@ export class NearBalanceProvider implements BalanceProvider {
         nearPrice = await getPriceWithFallback("NEAR", priceInfo);
       }
 
-      if (nearBalance > 0.00000001) {
+      if (nearBalance > 0) {
         const tokenId = `near-${ZERO_ADDRESS}`;
         newBalances.push({
           id: `${wallet.id}-${tokenId}`,
@@ -164,7 +164,7 @@ export class NearBalanceProvider implements BalanceProvider {
         const balance = formatUnits(balanceRaw, decimals);
         const price = getPrice(token.symbol, priceInfo);
 
-        if (parseFloat(balance) > 0.00000001) {
+        if (parseFloat(balance) > 0) {
           return {
             id: `${wallet.id}-${token.id}`,
             walletId: wallet.id,

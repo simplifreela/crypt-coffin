@@ -59,7 +59,7 @@ export class EVMBalanceProvider implements BalanceProvider {
         const nativeBalance = formatEther(nativeBalanceWei);
         const nativePrice = getPrice(network.symbol, priceInfo);
 
-        if (parseFloat(nativeBalance) > 0.00000001) {
+        if (parseFloat(nativeBalance) > 0) {
           const tokenId = `${network.id}-${ZERO_ADDRESS}`;
           balances.push({
             id: `${wallet.id}-${tokenId}`,
@@ -90,7 +90,7 @@ export class EVMBalanceProvider implements BalanceProvider {
             const balance = formatUnits(balanceRaw, decimals);
             const price = getPrice(token.symbol, priceInfo);
 
-            if (parseFloat(balance) > 0.00000001) {
+            if (parseFloat(balance) > 0) {
               return {
                 id: `${wallet.id}-${token.id}`,
                 walletId: wallet.id,
@@ -167,7 +167,7 @@ export class EVMBalanceProvider implements BalanceProvider {
 
       newBalanceUsd = (parseFloat(newBalanceValue) * price).toFixed(2);
 
-      if (parseFloat(newBalanceValue) > 0.00000001) {
+      if (parseFloat(newBalanceValue) > 0) {
         return {
           id: `${wallet.id}-${token.id}`,
           walletId: wallet.id,

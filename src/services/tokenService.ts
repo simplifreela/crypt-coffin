@@ -103,10 +103,8 @@ export const buildMasterTokenList = (
       const address = tokenInfo.contract_address;
 
       if (networkId && address) {
-        const processedAddress =
-          networkId === "solana" || networkId === "near"
-            ? address
-            : address.toLowerCase();
+        // Preserve the address casing as provided in the source data.
+        const processedAddress = address;
 
         masterTokenList.push({
           id: `${networkId}-${processedAddress}`,

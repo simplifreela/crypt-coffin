@@ -85,7 +85,7 @@ async function fetchNearBalances(
     const nearBalance = parseInt(amountYocto, 10) / 1e24;
     const nearPrice = getPrice("NEAR", priceInfo);
 
-    if (nearBalance > 0.00000001) {
+    if (nearBalance > 0) {
       const tokenId = `near-${ZERO_ADDRESS}`;
       newBalances.push({
         id: `${wallet.id}-${tokenId}`,
@@ -165,7 +165,7 @@ async function fetchNearBalances(
 
       const price = getPrice(token.symbol, priceInfo);
 
-      if (parseFloat(balance) > 0.00000001) {
+      if (parseFloat(balance) > 0) {
         newBalances.push({
           id: `${wallet.id}-${token.id}`,
           walletId: wallet.id,
@@ -213,7 +213,7 @@ async function fetchSolanaBalances(
     const solBalance = lamports / 1e9;
     const solPrice = getPrice("SOL", priceInfo);
 
-    if (solBalance > 0.00000001) {
+    if (solBalance > 0) {
       const tokenId = `solana-${ZERO_ADDRESS}`;
       newBalances.push({
         id: `${wallet.id}-${tokenId}`,
@@ -261,7 +261,7 @@ async function fetchSolanaBalances(
 
       const price = getPrice(token.symbol, priceInfo);
 
-      if (totalBalance > 0.00000001) {
+      if (totalBalance > 0) {
         newBalances.push({
           id: `${wallet.id}-${token.id}`,
           walletId: wallet.id,
@@ -303,7 +303,7 @@ async function fetchEvmBalances(
       const nativeBalance = formatEther(nativeBalanceWei);
       const nativePrice = getPrice(network.symbol, priceInfo);
 
-      if (parseFloat(nativeBalance) > 0.00000001) {
+      if (parseFloat(nativeBalance) > 0) {
         const tokenId = `${network.id}-${ZERO_ADDRESS}`;
         newBalances.push({
           id: `${wallet.id}-${tokenId}`,
@@ -333,7 +333,7 @@ async function fetchEvmBalances(
           const balance = formatUnits(balanceRaw, decimals);
           const price = getPrice(token.symbol, priceInfo);
 
-          if (parseFloat(balance) > 0.00000001) {
+          if (parseFloat(balance) > 0) {
             newBalances.push({
               id: `${wallet.id}-${token.id}`,
               walletId: wallet.id,
@@ -427,7 +427,7 @@ export const fetchTokenBalance = async (
         newBalanceValue = parseFloat(balance).toFixed(4);
       }
       newBalanceUsd = (parseFloat(newBalanceValue) * price).toFixed(2);
-      if (parseFloat(newBalanceValue) > 0.00000001) {
+      if (parseFloat(newBalanceValue) > 0) {
         return {
           id: `${wallet.id}-${token.id}`,
           walletId: wallet.id,
