@@ -1,6 +1,7 @@
 "use client";
 
 import * as db from '@/lib/db';
+import { normalizeAddress } from '@/lib/addressUtils';
 import type { Wallet, EVMNetwork, Token, Balance, NewWallet, NewEVMNetwork, PortfolioOverview, NewPortfolioOverview } from '@/types';
 import type { StorageProvider } from './types';
 
@@ -21,8 +22,18 @@ export class IndexedDBStorageProvider implements StorageProvider {
     
     async addWallet(walletData: NewWallet): Promise<Wallet> {
         const wallets = await this.getWallets();
+        // Normalize address when possible before saving locally
+        let addr = walletData.address;
+        try {
+            const normalized = await normalizeAddress(addr, walletData.type);
+            addr = normalized.address;
+        } catch (e) {
+            // ignore normalization failures
+        }
+
         const newWallet: Wallet = {
             ...walletData,
+            address: addr,
             id: crypto.randomUUID(), // Generate ID on the client for local storage
         };
         await db.setItem(DB_KEYS.WALLETS, [...wallets, newWallet]);
@@ -62,7 +73,18 @@ export class IndexedDBStorageProvider implements StorageProvider {
     
     async saveAllTokens(tokens: Token[]): Promise<void> {
         // For local storage, we only care about custom tokens. The full list is always built in memory.
-        const customTokens = tokens.filter(t => t.isCustom);
+        const customTokens = tokens.filter(t => t.isCustom).map(t => ({ ...t }));
+        // Normalize addresses for custom tokens where possible
+        for (const t of customTokens) {
+            if (t.address && t.address !== "0x0000000000000000000000000000000000000000") {
+                try {
+                    const normalized = await normalizeAddress(t.address, (t as any).tokenType || 'evm');
+                    t.address = normalized.address;
+                } catch (e) {
+                    // ignore
+                }
+            }
+        }
         return db.setItem(DB_KEYS.CUSTOM_TOKENS, customTokens);
     }
 
@@ -70,6 +92,13 @@ export class IndexedDBStorageProvider implements StorageProvider {
         const tokens = await this.getCustomTokens();
         // Avoid duplicates
         if (!tokens.find(t => t.id === token.id)) {
+            // normalize address
+            try {
+                const normalized = await normalizeAddress(token.address, (token as any).tokenType || 'evm');
+                token.address = normalized.address;
+            } catch (e) {
+                // ignore
+            }
             await db.setItem(DB_KEYS.CUSTOM_TOKENS, [...tokens, token]);
         }
     }

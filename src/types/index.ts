@@ -58,6 +58,7 @@ export interface Token {
   symbol: string;
   networkId: string;
   isCustom: boolean;
+  tokenType: WalletType; // 'evm' | 'solana' | 'near' | 'btc'
 }
 
 // Balance represents the relationship between a User, a Wallet, and a Token.

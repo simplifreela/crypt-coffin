@@ -16,6 +16,7 @@ import {
   WalletType,
   NewWallet,
   NewEVMNetwork,
+  PortfolioOverview,
 } from "@/types";
 import * as dbService from "@/services/dbService";
 import {
@@ -29,6 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { StorageMode } from "@/services/dbService";
 import { createClient } from "@/lib/supabase/client";
 import { Session, User as SupabaseUser } from "@supabase/supabase-js";
+import { getAdapter } from "@/services/walletAdapter";
 import { BrowserProvider } from "ethers";
 
 interface IWalletContext {
@@ -42,11 +44,27 @@ interface IWalletContext {
     type: WalletType,
     name: string,
   ) => Promise<void>;
+  connectWallet: (providerId: string) => Promise<void>;
+  /**
+   * @deprecated use connectWallet('evm')
+   * @returns
+   */
   connectEvmWallet: () => Promise<void>;
   removeWallet: (walletId: string) => Promise<void>;
   renameWallet: (walletId: string, newName: string) => Promise<void>;
   addCustomNetwork: (network: NewEVMNetwork) => Promise<void>;
-  updateCustomNetwork: (networkId: string, updates: { name?: string; rpcUrl?: string }) => Promise<void>;
+  getPortfolioOverviews: () => Promise<PortfolioOverview[]>;
+  addPortfolioOverview: (overview: {
+    name: string;
+    description?: string;
+    walletIds: string[];
+  }) => Promise<any>;
+  updatePortfolioOverview: (overviewId: string, updates: Partial<any>) => Promise<PortfolioOverview>;
+  removePortfolioOverview: (overviewId: string) => Promise<void>;
+  updateCustomNetwork: (
+    networkId: string,
+    updates: { name?: string; rpcUrl?: string },
+  ) => Promise<void>;
   removeCustomNetwork: (networkId: string) => Promise<void>;
   addCustomToken: (token: Omit<Token, "id" | "isCustom">) => Promise<void>;
   removeCustomToken: (tokenId: string) => Promise<void>;
@@ -95,10 +113,22 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
           cachedItem &&
           Date.now() - cachedItem.timestamp < BALANCE_CACHE_DURATION
         ) {
-          setBalances((prev) =>
-            new Map(prev).set(wallet.id, cachedItem.balances),
+          // Validate that all cached balance tokenIds exist in the current token list.
+          // If any are orphaned (e.g., after token table wipe), skip cache and fetch fresh.
+          const allTokenIdsValid = cachedItem.balances.every((b) =>
+            tokens.some((t) => t.id === b.tokenId),
           );
-          return;
+
+          if (allTokenIdsValid) {
+            setBalances((prev) =>
+              new Map(prev).set(wallet.id, cachedItem.balances),
+            );
+            return;
+          } else {
+            console.warn(
+              `Skipping stale cache for wallet ${wallet.id}: contains orphaned token references`,
+            );
+          }
         }
       }
 
@@ -228,19 +258,29 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     type: WalletType,
     name: string,
   ) => {
-    // Preserve the address casing as provided; perform case-insensitive duplicate checks.
-    const normalizedAddress = address;
+    // Normalize address when possible (checksums for EVM, PublicKey for Solana)
+    let saveAddress = address;
+    try {
+      const { normalizeAddress } = await import("@/lib/addressUtils");
+      const normalized = await normalizeAddress(address, type);
+      saveAddress = normalized.address;
+    } catch (e) {
+      // if normalization fails, fall back to the original address
+      saveAddress = address;
+    }
 
     if (
-      wallets.some((w) =>
-        w.type === type && String(w.address).toLowerCase() === String(normalizedAddress).toLowerCase(),
+      wallets.some(
+        (w) =>
+          w.type === type &&
+          String(w.address).toLowerCase() === String(saveAddress).toLowerCase(),
       )
     ) {
       throw new Error("Wallet with this address and type already exists.");
     }
 
     const walletData: NewWallet = {
-      address,
+      address: saveAddress,
       type,
       name,
       isWatched: true,
@@ -252,22 +292,25 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     setActiveWallet(newWallet);
   };
 
-  const connectEvmWallet = async () => {
-    if (typeof window.ethereum === "undefined") {
-      toast({
-        title: "MetaMask not found",
-        description: "Please install the MetaMask extension.",
-        variant: "destructive",
-      });
-      return;
-    }
+  const connectWallet = async (providerId: string) => {
     try {
-      const provider = new BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const address = await signer.getAddress();
+      const adapter = getAdapter(providerId);
+      const connected = await adapter.connect();
+
+      let address = connected.address;
+      const type = connected.type;
+      try {
+        const { normalizeAddress } = await import("@/lib/addressUtils");
+        const normalized = await normalizeAddress(address, type);
+        address = normalized.address;
+      } catch (e) {
+        // ignore normalization errors
+      }
 
       const existing = wallets.find(
-        (w) => String(w.address).toLowerCase() === String(address).toLowerCase() && w.type === "evm",
+        (w) =>
+          String(w.address).toLowerCase() === String(address).toLowerCase() &&
+          w.type === type,
       );
       if (existing) {
         setActiveWallet(existing);
@@ -278,8 +321,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
       const walletData: NewWallet = {
         address: address,
-        type: "evm",
-        name: `MetaMask (${address.slice(0, 6)}...)`,
+        type: type,
+        name: connected.name || `Connected (${address.slice(0, 6)}...)`,
         isWatched: false,
       };
       const newWallet = await dataService.addWallet(walletData);
@@ -291,7 +334,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       console.error("Error connecting wallet", error);
       toast({
         title: "Connection Error",
-        description: "User rejected the connection request.",
+        description:
+          error instanceof Error ? error.message : "Connection failed",
         variant: "destructive",
       });
     }
@@ -366,9 +410,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
             ? new Date(userData.premiumExpiresAt)
             : null;
           const hasActivePremium =
-            userData.isPremium &&
-            premiumExpires &&
-            premiumExpires > now;
+            userData.isPremium && premiumExpires && premiumExpires > now;
 
           console.log("Premium check result:", {
             isPremium: userData.isPremium,
@@ -391,7 +433,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       // Auto-add connected wallet to user's wallets if not present
       try {
         const existing = wallets.find(
-          (w) => String(w.address).toLowerCase() === String(walletAddress).toLowerCase() && w.type === "evm",
+          (w) =>
+            String(w.address).toLowerCase() ===
+              String(walletAddress).toLowerCase() && w.type === "evm",
         );
         if (!existing) {
           const walletData: NewWallet = {
@@ -439,17 +483,31 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const addPortfolioOverview = async (overview: { name: string; description?: string; walletIds: string[] }) => {
+  const addPortfolioOverview = async (overview: {
+    name: string;
+    description?: string;
+    walletIds: string[];
+  }) => {
     const currentDataService = dbService.getDataService(storageMode);
-    const newOverview = await currentDataService.addPortfolioOverview(overview as any);
+    const newOverview = await currentDataService.addPortfolioOverview(
+      overview as any,
+    );
     setOverviews((prev) => [...prev, newOverview]);
     return newOverview;
   };
 
-  const updatePortfolioOverview = async (overviewId: string, updates: Partial<any>) => {
+  const updatePortfolioOverview = async (
+    overviewId: string,
+    updates: Partial<any>,
+  ) => {
     const currentDataService = dbService.getDataService(storageMode);
-    const updated = await currentDataService.updatePortfolioOverview(overviewId, updates);
-    setOverviews((prev) => prev.map((o) => (o.id === overviewId ? updated : o)));
+    const updated = await currentDataService.updatePortfolioOverview(
+      overviewId,
+      updates,
+    );
+    setOverviews((prev) =>
+      prev.map((o) => (o.id === overviewId ? updated : o)),
+    );
     return updated;
   };
 
@@ -473,7 +531,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const renameWallet = async (walletId: string, newName: string) => {
-    const updatedWallet = await dataService.updateWallet(walletId, { name: newName });
+    const updatedWallet = await dataService.updateWallet(walletId, {
+      name: newName,
+    });
     setWallets((prev) =>
       prev.map((w) => (w.id === walletId ? updatedWallet : w)),
     );
@@ -483,7 +543,10 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     networkId: string,
     updates: { name?: string; rpcUrl?: string },
   ) => {
-    const updatedNetwork = await dataService.updateCustomNetwork(networkId, updates);
+    const updatedNetwork = await dataService.updateCustomNetwork(
+      networkId,
+      updates,
+    );
     setNetworks((prev) =>
       prev.map((n) => (n.id === networkId ? updatedNetwork : n)),
     );
@@ -505,9 +568,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         ? token.address
         : token.address;
 
-    const existingToken = tokens.find((t) =>
-      t.networkId === token.networkId &&
-      String(t.address).toLowerCase() === String(processedAddress).toLowerCase(),
+    const existingToken = tokens.find(
+      (t) =>
+        t.networkId === token.networkId &&
+        String(t.address).toLowerCase() ===
+          String(processedAddress).toLowerCase(),
     );
 
     if (existingToken) {
@@ -695,15 +760,16 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [wallets, balances, fetchBalances]);
 
-  const value = {
+  const value: IWalletContext = {
     wallets,
     networks,
     tokens,
     balances,
     loading,
     addWatchedWallet,
-    connectEvmWallet,
+    connectWallet,
     removeWallet,
+    connectEvmWallet: () => connectWallet("evm"), // backwards compat wrapper    removeWallet,
     renameWallet,
     addCustomNetwork,
     updateCustomNetwork,

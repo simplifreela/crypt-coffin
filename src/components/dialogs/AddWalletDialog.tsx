@@ -12,7 +12,7 @@ import { WalletType } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
 export function AddWalletDialog({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
-  const { connectEvmWallet, addWatchedWallet } = useWallets();
+  const { connectWallet, addWatchedWallet } = useWallets();
   const { toast } = useToast();
   const [watchedAddress, setWatchedAddress] = useState("");
   const [watchedType, setWatchedType] = useState<WalletType>("evm");
@@ -50,7 +50,7 @@ export function AddWalletDialog({ open, onOpenChange }: { open: boolean, onOpenC
   const handleConnectEvm = async () => {
     setIsConnecting(true);
     try {
-        await connectEvmWallet();
+        await connectWallet('evm');
         onOpenChange(false);
     } catch (e) {
         // Error toast is handled in context

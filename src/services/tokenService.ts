@@ -42,6 +42,10 @@ export const buildMasterTokenList = (
     base: "8453",
     "avalanche c-chain": "43114",
     avalanche: "43114",
+    solana: "solana",
+    near: "near",
+    bitcoin: "btc",
+    btc: "btc",
   };
 
   const masterTokenList: Token[] = [];
@@ -56,6 +60,7 @@ export const buildMasterTokenList = (
       symbol: "SOL",
       networkId: "solana",
       isCustom: false,
+      tokenType: "solana",
     },
     {
       id: `near-${ZERO_ADDRESS}`,
@@ -64,6 +69,7 @@ export const buildMasterTokenList = (
       symbol: "NEAR",
       networkId: "near",
       isCustom: false,
+      tokenType: "near",
     },
     {
       id: `btc-${ZERO_ADDRESS}`,
@@ -72,6 +78,7 @@ export const buildMasterTokenList = (
       symbol: "BTC",
       networkId: "btc",
       isCustom: false,
+      tokenType: "btc",
     },
   );
 
@@ -84,6 +91,7 @@ export const buildMasterTokenList = (
       symbol: net.symbol,
       networkId: net.id,
       isCustom: false,
+      tokenType: "evm",
     });
   });
 
@@ -106,6 +114,10 @@ export const buildMasterTokenList = (
         // Preserve the address casing as provided in the source data.
         const processedAddress = address;
 
+        const tokenType = ["solana", "near", "btc"].includes(networkId)
+          ? (networkId as any)
+          : "evm";
+
         masterTokenList.push({
           id: `${networkId}-${processedAddress}`,
           address: processedAddress,
@@ -113,6 +125,7 @@ export const buildMasterTokenList = (
           symbol: symbolKey,
           networkId: networkId,
           isCustom: false,
+          tokenType,
         });
       }
     });

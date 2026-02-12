@@ -12,6 +12,7 @@ import type {
 import type { StorageProvider } from "./types";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ZERO_ADDRESS } from "@/lib/constants";
+import { normalizeAddress } from "@/lib/addressUtils";
 
 export class SupabaseStorageProvider implements StorageProvider {
   private supabase: SupabaseClient;
@@ -166,6 +167,7 @@ export class SupabaseStorageProvider implements StorageProvider {
         symbol: t.symbol,
         networkId: mappedNetworkId,
         isCustom: t.isCustom,
+        tokenType: (t as any).tokenType || (mappedNetworkId ? "evm" : "evm"),
       };
     });
 
@@ -173,9 +175,24 @@ export class SupabaseStorageProvider implements StorageProvider {
     for (let i = 0; i < toSave.length; i += batchSize) {
       const batch = toSave.slice(i, i + batchSize);
       // Upsert using the uniqueness constraint on (address, networkId)
+      // Normalize addresses before upsert to ensure consistent casing (checksummed for EVM)
+      const normalizedBatchPromises = batch.map(async (b: any) => {
+        const chain: any = b.tokenType === "solana" || b.networkId === null ? b.tokenType || null : "evm";
+        if (b.address && b.address !== ZERO_ADDRESS) {
+          try {
+            const normalized = await normalizeAddress(b.address, chain || "evm");
+            b.address = normalized.address;
+          } catch (e) {
+            // ignore normalization failures and keep original address
+          }
+        }
+        return b;
+      });
+      const normalizedBatch = await Promise.all(normalizedBatchPromises);
+
       const { error } = await this.supabase
         .from("Token")
-        .upsert(batch, { onConflict: ["address", "networkId"] });
+        .upsert(normalizedBatch, { onConflict: ["address", "networkId"] });
       if (error) {
         console.error("Error saving all tokens to Supabase:", error);
         throw new Error(error.message);
@@ -197,7 +214,8 @@ export class SupabaseStorageProvider implements StorageProvider {
           ? null
           : token.networkId,
       isCustom: token.isCustom,
-    };
+        tokenType: (token as any).tokenType || (token.networkId === "solana" ? "solana" : "evm"),
+      };
 
     const { error } = await this.supabase.from("Token").upsert(payload, {
       onConflict: ["address", "networkId"],
@@ -310,8 +328,18 @@ export class SupabaseStorageProvider implements StorageProvider {
       // Normalize native marker or empty into the ZERO_ADDRESS placeholder
       if (!address || address === "native" || address === ZERO_ADDRESS) {
         address = ZERO_ADDRESS;
+      } else {
+        // Attempt to normalize based on inferred chain
+        try {
+          const inferredChain: any = mappedNetworkId === null
+            ? (networkKey as any)
+            : "evm";
+          const normalized = await normalizeAddress(address, inferredChain as any);
+          address = normalized.address;
+        } catch (e) {
+          // ignore normalization failure
+        }
       }
-      address = address.toLowerCase();
 
       parsedBalances.push({ original: b, address, mappedNetworkId });
       lookupKeys.add(`${address}|${mappedNetworkId ?? "null"}`);
@@ -349,7 +377,7 @@ export class SupabaseStorageProvider implements StorageProvider {
         throw tokenError;
       }
       (foundTokens || []).forEach((t: any) => {
-        const key = `${String(t.address).toLowerCase()}|${t.networkId ?? "null"}`;
+        const key = `${String(t.address)}|${t.networkId ?? "null"}`;
         tokenMap.set(key, t.id);
       });
     }
