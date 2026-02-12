@@ -3,10 +3,11 @@ export type WalletType = 'evm' | 'solana' | 'near' | 'btc';
 export interface User {
   id: string; // uuid from auth.uid()
   email?: string;
+  walletAddress: string; // Primary wallet for login
+  myWallets?: string[]; // Additional wallet addresses for multi-device access
   isPremium: boolean;
   premiumExpiresAt?: string; // ISO 8601 string for DB compatibility
   createdAt: string;
-  walletAddress: string;
   premiumPurchases: {
     amountUSD: number;
     /**
@@ -81,3 +82,19 @@ export interface Balance {
     balanceUSD: string;
   }[];
 }
+
+/**
+ * Portfolio Overview - groups wallets for easier viewing
+ * Users can create multiple overviews to organize their wallets
+ */
+export interface PortfolioOverview {
+  id: string; // uuid from DB
+  userId: string; // Foreign key to User
+  name: string;
+  description?: string;
+  walletIds: string[]; // Array of wallet IDs to include in this overview
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NewPortfolioOverview = Omit<PortfolioOverview, 'id' | 'userId' | 'createdAt' | 'updatedAt'>;

@@ -3,6 +3,7 @@
 import { Wallet, Token, Balance, EVMNetwork } from "@/types";
 import { JsonRpcProvider, Contract, formatUnits, formatEther } from "ethers";
 import { TokenPriceInfo } from "./tokenService";
+import { ZERO_ADDRESS } from "@/lib/constants";
 
 const getPrice = (
   symbol: string,
@@ -29,7 +30,7 @@ async function fetchBtcBalance(
     const btcPrice = getPrice("BTC", priceInfo);
 
     if (btcBalance > 0) {
-      const tokenId = "btc-native";
+      const tokenId = `btc-${ZERO_ADDRESS}`;
       return [
         {
           id: `${wallet.id}-${tokenId}`,
@@ -85,7 +86,7 @@ async function fetchNearBalances(
     const nearPrice = getPrice("NEAR", priceInfo);
 
     if (nearBalance > 0.00000001) {
-      const tokenId = "near-native";
+      const tokenId = `near-${ZERO_ADDRESS}`;
       newBalances.push({
         id: `${wallet.id}-${tokenId}`,
         walletId: wallet.id,
@@ -103,7 +104,7 @@ async function fetchNearBalances(
   }
 
   const nearTokens = tokens.filter(
-    (t) => t.networkId === "near" && t.address !== "native",
+    (t) => t.networkId === "near" && t.address !== ZERO_ADDRESS,
   );
   for (const token of nearTokens) {
     try {
@@ -213,7 +214,7 @@ async function fetchSolanaBalances(
     const solPrice = getPrice("SOL", priceInfo);
 
     if (solBalance > 0.00000001) {
-      const tokenId = "solana-native";
+      const tokenId = `solana-${ZERO_ADDRESS}`;
       newBalances.push({
         id: `${wallet.id}-${tokenId}`,
         walletId: wallet.id,
@@ -230,7 +231,7 @@ async function fetchSolanaBalances(
     console.error("Failed to fetch SOL balance", error);
   }
   const solanaTokens = tokens.filter(
-    (t) => t.networkId === "solana" && t.address !== "native",
+    (t) => t.networkId === "solana" && t.address !== ZERO_ADDRESS,
   );
   for (const token of solanaTokens) {
     try {
@@ -303,7 +304,7 @@ async function fetchEvmBalances(
       const nativePrice = getPrice(network.symbol, priceInfo);
 
       if (parseFloat(nativeBalance) > 0.00000001) {
-        const tokenId = `${network.id}-native`;
+        const tokenId = `${network.id}-${ZERO_ADDRESS}`;
         newBalances.push({
           id: `${wallet.id}-${tokenId}`,
           walletId: wallet.id,
@@ -318,7 +319,7 @@ async function fetchEvmBalances(
       }
 
       const networkTokens = tokens.filter(
-        (t) => t.networkId === network.id && t.address !== "native",
+        (t) => t.networkId === network.id && t.address !== ZERO_ADDRESS,
       );
 
       for (const token of networkTokens) {
@@ -408,7 +409,7 @@ export const fetchTokenBalance = async (
 
       const provider = new JsonRpcProvider(network.rpcUrl);
 
-      if (token.address === "native") {
+      if (token.address === ZERO_ADDRESS) {
         const nativeBalanceWei = await provider.getBalance(wallet.address);
         const nativeBalance = formatEther(nativeBalanceWei);
         newBalanceValue = parseFloat(nativeBalance).toFixed(4);

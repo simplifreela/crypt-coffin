@@ -1,6 +1,6 @@
 import { Token, EVMNetwork } from "@/types";
 import contractAddresses from "@/shared/contract-addresses.json";
-import { DEFAULT_EVM_NETWORKS } from "@/lib/constants";
+import { DEFAULT_EVM_NETWORKS, ZERO_ADDRESS } from "@/lib/constants";
 
 export interface TokenPriceInfo {
   prices: Map<string, number>;
@@ -47,27 +47,27 @@ export const buildMasterTokenList = (
   const masterTokenList: Token[] = [];
   const symbolToTickerMap = new Map<string, string>();
 
-  // Native tokens for non-EVM chains
+  // Native tokens for non-EVM chains (use ZERO_ADDRESS placeholder)
   masterTokenList.push(
     {
-      id: "solana-native",
-      address: "native",
+      id: `solana-${ZERO_ADDRESS}`,
+      address: ZERO_ADDRESS,
       name: "Solana",
       symbol: "SOL",
       networkId: "solana",
       isCustom: false,
     },
     {
-      id: "near-native",
-      address: "native",
+      id: `near-${ZERO_ADDRESS}`,
+      address: ZERO_ADDRESS,
       name: "Near",
       symbol: "NEAR",
       networkId: "near",
       isCustom: false,
     },
     {
-      id: "btc-native",
-      address: "native",
+      id: `btc-${ZERO_ADDRESS}`,
+      address: ZERO_ADDRESS,
       name: "Bitcoin",
       symbol: "BTC",
       networkId: "btc",
@@ -78,8 +78,8 @@ export const buildMasterTokenList = (
   // Native tokens for all EVM chains
   allNetworks.forEach((net) => {
     masterTokenList.push({
-      id: `${net.id}-native`,
-      address: "native",
+      id: `${net.id}-${ZERO_ADDRESS}`,
+      address: ZERO_ADDRESS,
       name: net.name,
       symbol: net.symbol,
       networkId: net.id,

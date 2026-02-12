@@ -1,13 +1,14 @@
 "use client";
 
 import * as db from '@/lib/db';
-import type { Wallet, EVMNetwork, Token, Balance, NewWallet, NewEVMNetwork } from '@/types';
+import type { Wallet, EVMNetwork, Token, Balance, NewWallet, NewEVMNetwork, PortfolioOverview, NewPortfolioOverview } from '@/types';
 import type { StorageProvider } from './types';
 
 const DB_KEYS = {
     WALLETS: 'wallets',
     CUSTOM_NETWORKS: 'custom_networks',
-    CUSTOM_TOKENS: 'custom_tokens'
+    CUSTOM_TOKENS: 'custom_tokens',
+    PORTFOLIO_OVERVIEWS: 'portfolio_overviews'
 };
 
 const BALANCE_CACHE_PREFIX = 'balance-cache-';
@@ -90,4 +91,69 @@ export class IndexedDBStorageProvider implements StorageProvider {
     async clearCachedBalances(walletId: string): Promise<void> {
         return db.removeItem(`${BALANCE_CACHE_PREFIX}${walletId}`);
     }
-}
+
+    async updateWallet(walletId: string, updates: Partial<Wallet>): Promise<Wallet> {
+        const wallets = await this.getWallets();
+        const index = wallets.findIndex(w => w.id === walletId);
+        if (index === -1) throw new Error("Wallet not found");
+        
+        const updatedWallet = { ...wallets[index], ...updates };
+        const updatedWallets = [...wallets];
+        updatedWallets[index] = updatedWallet;
+        
+        await db.setItem(DB_KEYS.WALLETS, updatedWallets);
+        return updatedWallet;
+    }
+
+    async updateCustomNetwork(networkId: string, updates: Partial<EVMNetwork>): Promise<EVMNetwork> {
+        const networks = await this.getCustomNetworks();
+        const index = networks.findIndex(n => n.id === networkId);
+        if (index === -1) throw new Error("Network not found");
+        
+        const updatedNetwork = { ...networks[index], ...updates };
+        const updatedNetworks = [...networks];
+        updatedNetworks[index] = updatedNetwork;
+        
+        await db.setItem(DB_KEYS.CUSTOM_NETWORKS, updatedNetworks);
+        return updatedNetwork;
+    }
+
+    async getPortfolioOverviews(): Promise<PortfolioOverview[]> {
+        return db.getItem<PortfolioOverview[]>(DB_KEYS.PORTFOLIO_OVERVIEWS).then(res => res || []);
+    }
+
+    async addPortfolioOverview(overview: NewPortfolioOverview): Promise<PortfolioOverview> {
+        const overviews = await this.getPortfolioOverviews();
+        const newOverview: PortfolioOverview = {
+            ...overview,
+            id: crypto.randomUUID(),
+            userId: "", // Local mode doesn't use userId
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+        await db.setItem(DB_KEYS.PORTFOLIO_OVERVIEWS, [...overviews, newOverview]);
+        return newOverview;
+    }
+
+    async updatePortfolioOverview(overviewId: string, updates: Partial<PortfolioOverview>): Promise<PortfolioOverview> {
+        const overviews = await this.getPortfolioOverviews();
+        const index = overviews.findIndex(o => o.id === overviewId);
+        if (index === -1) throw new Error("Portfolio overview not found");
+        
+        const updatedOverview = { 
+            ...overviews[index], 
+            ...updates,
+            updatedAt: new Date().toISOString()
+        };
+        const updatedOverviews = [...overviews];
+        updatedOverviews[index] = updatedOverview;
+        
+        await db.setItem(DB_KEYS.PORTFOLIO_OVERVIEWS, updatedOverviews);
+        return updatedOverview;
+    }
+
+    async removePortfolioOverview(overviewId: string): Promise<void> {
+        const overviews = await this.getPortfolioOverviews();
+        const updatedOverviews = overviews.filter(o => o.id !== overviewId);
+        return db.setItem(DB_KEYS.PORTFOLIO_OVERVIEWS, updatedOverviews);
+    }

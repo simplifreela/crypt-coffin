@@ -4,7 +4,9 @@ import { Wallet } from "@/types";
 import { Button } from "./ui/button";
 import { CryptoIcon } from "./icons/CryptoIcons";
 import { cn } from "@/lib/utils";
-import { Copy, Eye, Wallet as WalletIcon, X } from "lucide-react";
+import { Copy, Eye, Wallet as WalletIcon, X, Settings } from "lucide-react";
+import { useState } from "react";
+import { RenameWalletDialog } from "@/components/dialogs/RenameWalletDialog";
 import { useWallets } from "@/hooks/useWallets";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -22,6 +24,7 @@ import {
 export function WalletListItem({ wallet, isActive, onClick }: { wallet: Wallet, isActive: boolean, onClick: () => void }) {
     const { removeWallet } = useWallets();
     const { toast } = useToast();
+    const [isRenameOpen, setIsRenameOpen] = useState(false);
 
     const handleCopy = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -67,6 +70,9 @@ export function WalletListItem({ wallet, isActive, onClick }: { wallet: Wallet, 
                 <Button variant="ghost" size="icon" className="w-7 h-7" onClick={handleCopy}>
                     <Copy className="w-4 h-4" />
                 </Button>
+                <Button variant="ghost" size="icon" className="w-7 h-7" onClick={(e) => { e.stopPropagation(); setIsRenameOpen(true); }}>
+                    <Settings className="w-4 h-4" />
+                </Button>
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
                          <Button variant="ghost" size="icon" className="w-7 h-7 hover:bg-destructive/20 hover:text-destructive" onClick={(e) => e.stopPropagation()}>
@@ -87,6 +93,7 @@ export function WalletListItem({ wallet, isActive, onClick }: { wallet: Wallet, 
                     </AlertDialogContent>
                 </AlertDialog>
             </div>
+            <RenameWalletDialog open={isRenameOpen} onOpenChange={setIsRenameOpen} wallet={wallet} />
         </div>
     )
 }

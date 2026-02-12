@@ -23,10 +23,7 @@ import {
   fetchTokenPrices,
   TokenPriceInfo,
 } from "@/services/tokenService";
-import {
-  fetchWalletBalances,
-  fetchTokenBalance,
-} from "@/services/balanceService";
+import { balanceService } from "@/services/balance";
 import { DEFAULT_EVM_NETWORKS } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import type { StorageMode } from "@/services/dbService";
@@ -47,7 +44,10 @@ interface IWalletContext {
   ) => Promise<void>;
   connectEvmWallet: () => Promise<void>;
   removeWallet: (walletId: string) => Promise<void>;
+  renameWallet: (walletId: string, newName: string) => Promise<void>;
   addCustomNetwork: (network: NewEVMNetwork) => Promise<void>;
+  updateCustomNetwork: (networkId: string, updates: { name?: string; rpcUrl?: string }) => Promise<void>;
+  removeCustomNetwork: (networkId: string) => Promise<void>;
   addCustomToken: (token: Omit<Token, "id" | "isCustom">) => Promise<void>;
   removeCustomToken: (tokenId: string) => Promise<void>;
   fetchBalances: (wallet: Wallet, force?: boolean) => Promise<void>;
@@ -80,6 +80,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [activeWallet, setActiveWallet] = useState<Wallet | null>(null);
   const [storageMode, setInternalStorageMode] = useState<StorageMode>("local");
   const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [overviews, setOverviews] = useState<any[]>([]);
 
   const initialBalancesFetched = useRef(false);
   const supabase = createClient();
@@ -104,7 +105,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       setBalances((prev) => new Map(prev).set(wallet.id, undefined)); // Mark as loading
 
       try {
-        const newBalances = await fetchWalletBalances(
+        const newBalances = await balanceService.fetchWalletBalances(
           wallet,
           tokens,
           networks,
@@ -129,7 +130,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchBalanceForToken = useCallback(
     async (wallet: Wallet, tokenToRefresh: Token) => {
-      const newBalance = await fetchTokenBalance(
+      const newBalance = await balanceService.fetchTokenBalance(
         wallet,
         tokenToRefresh,
         networks,
@@ -349,7 +350,66 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         description: "You are now logged in.",
       });
       setUser(data.user);
-      await setStorageModeAndSync("cloud", data.user);
+
+      // Check if user has active premium
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from("User")
+          .select("isPremium, premiumExpiresAt")
+          .eq("id", data.user.id)
+          .single();
+
+        if (!userError && userData) {
+          const now = new Date();
+          const premiumExpires = userData.premiumExpiresAt
+            ? new Date(userData.premiumExpiresAt)
+            : null;
+          const hasActivePremium =
+            userData.isPremium &&
+            premiumExpires &&
+            premiumExpires > now;
+
+          console.log("Premium check result:", {
+            isPremium: userData.isPremium,
+            premiumExpiresAt: userData.premiumExpiresAt,
+            now: now.toISOString(),
+            hasActivePremium,
+          });
+
+          if (hasActivePremium) {
+            // Auto-enable cloud sync for premium users
+            console.log("Premium user detected, enabling cloud sync");
+            await setStorageModeAndSync("cloud", data.user);
+          }
+        }
+      } catch (e) {
+        // Non-blocking: if premium check fails, user can still use local storage
+        console.error("Failed to check premium status:", e);
+      }
+
+      // Auto-add connected wallet to user's wallets if not present
+      try {
+        const existing = wallets.find(
+          (w) => w.address.toLowerCase() === walletAddress.toLowerCase() && w.type === "evm",
+        );
+        if (!existing) {
+          const walletData: NewWallet = {
+            address: walletAddress,
+            type: "evm",
+            name: `MetaMask (${walletAddress.slice(0, 6)}...)`,
+            isWatched: false,
+          };
+          const newWallet = await dataService.addWallet(walletData);
+          setWallets((prev) => [...prev, newWallet]);
+          fetchBalances(newWallet, true);
+          setActiveWallet(newWallet);
+        }
+      } catch (e) {
+        // Non-blocking
+        console.error("Failed to auto-add connected wallet:", e);
+      }
+      // NOTE: Cloud sync is automatically enabled if user has active premium.
+      // Otherwise, users can opt-in to cloud sync through the cloud sync modal after login.
     } catch (error: any) {
       console.error("Web3 Login Error:", error);
       const message = error.message || "An unknown error occurred.";
@@ -364,6 +424,39 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       }
     }
   };
+
+  // Portfolio Overviews
+  const getPortfolioOverviews = async () => {
+    try {
+      const currentDataService = dbService.getDataService(storageMode);
+      const res = await currentDataService.getPortfolioOverviews();
+      setOverviews(res || []);
+      return res;
+    } catch (e) {
+      console.error("Failed to fetch overviews", e);
+      return [];
+    }
+  };
+
+  const addPortfolioOverview = async (overview: { name: string; description?: string; walletIds: string[] }) => {
+    const currentDataService = dbService.getDataService(storageMode);
+    const newOverview = await currentDataService.addPortfolioOverview(overview as any);
+    setOverviews((prev) => [...prev, newOverview]);
+    return newOverview;
+  };
+
+  const updatePortfolioOverview = async (overviewId: string, updates: Partial<any>) => {
+    const currentDataService = dbService.getDataService(storageMode);
+    const updated = await currentDataService.updatePortfolioOverview(overviewId, updates);
+    setOverviews((prev) => prev.map((o) => (o.id === overviewId ? updated : o)));
+    return updated;
+  };
+
+  const removePortfolioOverview = async (overviewId: string) => {
+    const currentDataService = dbService.getDataService(storageMode);
+    await currentDataService.removePortfolioOverview(overviewId);
+    setOverviews((prev) => prev.filter((o) => o.id !== overviewId));
+  };
   const removeWallet = async (walletId: string) => {
     await dataService.removeWallet(walletId);
     setWallets((prev) => prev.filter((w) => w.id !== walletId));
@@ -376,6 +469,28 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     if (activeWallet?.id === walletId) {
       setActiveWallet(null);
     }
+  };
+
+  const renameWallet = async (walletId: string, newName: string) => {
+    const updatedWallet = await dataService.updateWallet(walletId, { name: newName });
+    setWallets((prev) =>
+      prev.map((w) => (w.id === walletId ? updatedWallet : w)),
+    );
+  };
+
+  const updateCustomNetwork = async (
+    networkId: string,
+    updates: { name?: string; rpcUrl?: string },
+  ) => {
+    const updatedNetwork = await dataService.updateCustomNetwork(networkId, updates);
+    setNetworks((prev) =>
+      prev.map((n) => (n.id === networkId ? updatedNetwork : n)),
+    );
+  };
+
+  const removeCustomNetwork = async (networkId: string) => {
+    await dataService.removeCustomNetwork(networkId);
+    setNetworks((prev) => prev.filter((n) => n.id !== networkId));
   };
 
   const addCustomNetwork = async (network: NewEVMNetwork) => {
@@ -576,11 +691,18 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     addWatchedWallet,
     connectEvmWallet,
     removeWallet,
+    renameWallet,
     addCustomNetwork,
+    updateCustomNetwork,
+    removeCustomNetwork,
     addCustomToken,
     removeCustomToken,
     fetchBalances,
     fetchBalanceForToken,
+    getPortfolioOverviews,
+    addPortfolioOverview,
+    updatePortfolioOverview,
+    removePortfolioOverview,
     activeWallet,
     setActiveWallet,
     storageMode,
