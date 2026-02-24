@@ -1,4 +1,4 @@
-"use client";
+import { BigNumber } from "bignumber.js";
 
 import React, {
   createContext,
@@ -59,7 +59,10 @@ interface IWalletContext {
     description?: string;
     walletIds: string[];
   }) => Promise<any>;
-  updatePortfolioOverview: (overviewId: string, updates: Partial<any>) => Promise<PortfolioOverview>;
+  updatePortfolioOverview: (
+    overviewId: string,
+    updates: Partial<any>,
+  ) => Promise<PortfolioOverview>;
   removePortfolioOverview: (overviewId: string) => Promise<void>;
   updateCustomNetwork: (
     networkId: string,
@@ -175,15 +178,27 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
           (b) => b.tokenId === tokenToRefresh.id,
         );
 
-        if (newBalance && parseFloat(newBalance.balance) > 0) {
-          if (existingIndex > -1) {
-            updatedBalances = [...walletBalances];
-            updatedBalances[existingIndex] = newBalance;
+        if (newBalance) {
+          const bn = typeof newBalance.balance === "string" ? new BigNumber(newBalance.balance) : newBalance.balance;
+          if (bn.isGreaterThan(0)) {
+            if (existingIndex > -1) {
+              updatedBalances = [...walletBalances];
+              updatedBalances[existingIndex] = newBalance;
+            } else {
+              updatedBalances = [...walletBalances, newBalance];
+            }
           } else {
-            updatedBalances = [...walletBalances, newBalance];
+            // Balance is 0 or fetch failed
+            if (existingIndex > -1) {
+              updatedBalances = walletBalances.filter(
+                (b) => b.tokenId !== tokenToRefresh.id,
+              );
+            } else {
+              updatedBalances = [...walletBalances]; // No change
+            }
           }
         } else {
-          // Balance is 0 or fetch failed
+          // newBalance is null, remove from list if exists
           if (existingIndex > -1) {
             updatedBalances = walletBalances.filter(
               (b) => b.tokenId !== tokenToRefresh.id,

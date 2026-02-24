@@ -20,7 +20,7 @@ export async function normalizeAddress(
       try {
         // dynamic import so code doesn't crash if ethers isn't installed in some environments
         const ethers = await import("ethers");
-        const checksummed = ethers.utils.getAddress(address);
+        const checksummed = ethers.getAddress(address);
         return { address: checksummed, normalized: true };
       } catch (e) {
         return { address, normalized: false, error: "EVM checksum failed" };
@@ -29,7 +29,7 @@ export async function normalizeAddress(
 
     if (chain === "solana") {
       try {
-        const solana = await import("@solana/web3.js");
+        const solana = (await import("@solana/web3.js")).default;
         const pub = new solana.PublicKey(address);
         return { address: pub.toString(), normalized: true };
       } catch (e) {
@@ -41,7 +41,7 @@ export async function normalizeAddress(
       // Try bs58check or bech32 validation if available
       // If not available, perform lightweight pattern checks and return as-is
       try {
-        const bs58check = await import("bs58check");
+        const bs58check = (await import("bs58check")).default;
         try {
           // This will throw for invalid base58check addresses
           bs58check.decode(address);
@@ -54,7 +54,7 @@ export async function normalizeAddress(
       }
 
       try {
-        const bech32 = await import("bech32");
+        const bech32 = (await import("bech32")).default;
         try {
           const decoded = bech32.bech32.decode(address);
           if (decoded && decoded.prefix) {
@@ -75,7 +75,11 @@ export async function normalizeAddress(
         return { address, normalized: true };
       }
 
-      return { address, normalized: false, error: "Unrecognized BTC address format" };
+      return {
+        address,
+        normalized: false,
+        error: "Unrecognized BTC address format",
+      };
     }
 
     // For other/unknown chains (near, etc.) return original address and not normalized
@@ -85,7 +89,10 @@ export async function normalizeAddress(
   }
 }
 
-export async function isValidAddress(address: string, chain: WalletType): Promise<boolean> {
+export async function isValidAddress(
+  address: string,
+  chain: WalletType,
+): Promise<boolean> {
   const res = await normalizeAddress(address, chain);
   return res.normalized === true;
 }

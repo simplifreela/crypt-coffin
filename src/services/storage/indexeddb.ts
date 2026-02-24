@@ -2,6 +2,7 @@
 
 import * as db from '@/lib/db';
 import { normalizeAddress } from '@/lib/addressUtils';
+import { BigNumber } from 'bignumber.js';
 import type { Wallet, EVMNetwork, Token, Balance, NewWallet, NewEVMNetwork, PortfolioOverview, NewPortfolioOverview } from '@/types';
 import type { StorageProvider } from './types';
 
@@ -13,6 +14,26 @@ const DB_KEYS = {
 };
 
 const BALANCE_CACHE_PREFIX = 'balance-cache-';
+
+/**
+ * Serialize BigNumber instances to strings for IndexedDB storage
+ */
+function serializeBalance(balance: Balance): Balance {
+    return {
+        ...balance,
+        balance: typeof balance.balance === 'string' ? balance.balance : balance.balance.toString(),
+    };
+}
+
+/**
+ * Deserialize balance strings back to BigNumber instances
+ */
+function deserializeBalance(balance: Balance): Balance {
+    return {
+        ...balance,
+        balance: new BigNumber(balance.balance),
+    };
+}
 
 export class IndexedDBStorageProvider implements StorageProvider {
     
@@ -110,11 +131,17 @@ export class IndexedDBStorageProvider implements StorageProvider {
     }
     
     async getCachedBalances(walletId: string): Promise<{ balances: Balance[], timestamp: number } | undefined> {
-        return db.getItem<{ balances: Balance[], timestamp: number }>(`${BALANCE_CACHE_PREFIX}${walletId}`);
+        const cached = await db.getItem<{ balances: Balance[], timestamp: number }>(`${BALANCE_CACHE_PREFIX}${walletId}`);
+        if (!cached) return undefined;
+        return {
+            ...cached,
+            balances: cached.balances.map(deserializeBalance),
+        };
     }
     
     async cacheBalances(walletId: string, balances: Balance[]): Promise<void> {
-        return db.setItem(`${BALANCE_CACHE_PREFIX}${walletId}`, { balances, timestamp: Date.now() });
+        const serialized = balances.map(serializeBalance);
+        return db.setItem(`${BALANCE_CACHE_PREFIX}${walletId}`, { balances: serialized, timestamp: Date.now() });
     }
     
     async clearCachedBalances(walletId: string): Promise<void> {
@@ -186,3 +213,4 @@ export class IndexedDBStorageProvider implements StorageProvider {
         const updatedOverviews = overviews.filter(o => o.id !== overviewId);
         return db.setItem(DB_KEYS.PORTFOLIO_OVERVIEWS, updatedOverviews);
     }
+}

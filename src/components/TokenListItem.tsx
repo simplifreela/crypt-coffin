@@ -9,6 +9,7 @@ import { Button } from "./ui/button";
 import { RefreshCw, X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { BigNumber } from "bignumber.js";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +22,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast";
+
+/**
+ * Format a balance value (BigNumber or string) for display
+ */
+const formatBalance = (value: BigNumber | string): string => {
+  const bn = typeof value === "string" ? new BigNumber(value) : value;
+  return bn.toNumber().toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  });
+};
 
 export function TokenListItem({ balance, wallet }: { balance: Balance, wallet?: Wallet }) {
   const { activeWallet, fetchBalanceForToken, removeCustomToken, tokens } = useWallets();
@@ -70,7 +82,7 @@ export function TokenListItem({ balance, wallet }: { balance: Balance, wallet?: 
       </div>
       <div className="flex items-center gap-2">
         <div className="text-right">
-          <p className="font-semibold text-lg">{balance.balance}</p>
+          <p className="font-semibold text-lg">{formatBalance(balance.balance)}</p>
           <p className="text-sm text-muted-foreground">${balance.balanceUSD}</p>
         </div>
         <Button variant="ghost" size="icon" className="w-8 h-8 rounded-full" onClick={handleRefresh} disabled={isRefreshing}>

@@ -3,12 +3,14 @@ import { JsonRpcProvider, Contract, formatUnits, formatEther } from "ethers";
 import { TokenPriceInfo } from "../tokenService";
 import type { BalanceProvider } from "./types";
 import { ZERO_ADDRESS } from "@/lib/constants";
+import { BigNumber } from "bignumber.js";
 
 const getPrice = (
   symbol: string,
   { prices, symbolToTickerMap }: TokenPriceInfo,
 ): number => {
-  const ticker = symbolToTickerMap.get(symbol.toUpperCase()) || symbol.toUpperCase();
+  const ticker =
+    symbolToTickerMap.get(symbol.toUpperCase()) || symbol.toUpperCase();
   return prices.get(ticker) || 0;
 };
 
@@ -22,7 +24,9 @@ const getPriceWithFallback = async (
     const res = await fetch("/api/tokens");
     const cmc = await res.json();
     if (cmc && !cmc.error) {
-      const found = cmc.find((t: any) => t.symbol && t.symbol.toUpperCase() === symbol.toUpperCase());
+      const found = cmc.find(
+        (t: any) => t.symbol && t.symbol.toUpperCase() === symbol.toUpperCase(),
+      );
       if (found && found.price) return found.price;
     }
   } catch (e) {
@@ -59,15 +63,16 @@ export class EVMBalanceProvider implements BalanceProvider {
         const nativeBalance = formatEther(nativeBalanceWei);
         const nativePrice = getPrice(network.symbol, priceInfo);
 
-        if (parseFloat(nativeBalance) > 0) {
+        const nativeBalanceBN = new BigNumber(nativeBalance);
+        if (nativeBalanceBN.isGreaterThan(0)) {
           const tokenId = `${network.id}-${ZERO_ADDRESS}`;
           balances.push({
             id: `${wallet.id}-${tokenId}`,
             walletId: wallet.id,
             tokenId,
             userId: null,
-            balance: parseFloat(nativeBalance).toFixed(4),
-            balanceUSD: (parseFloat(nativeBalance) * nativePrice).toFixed(2),
+            balance: nativeBalanceBN,
+            balanceUSD: nativeBalanceBN.times(nativePrice).toFixed(2),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             previousBalances: [],
@@ -81,7 +86,11 @@ export class EVMBalanceProvider implements BalanceProvider {
 
         const tokenPromises = networkTokens.map(async (token) => {
           try {
-            const tokenContract = new Contract(token.address, erc20Abi, provider);
+            const tokenContract = new Contract(
+              token.address,
+              erc20Abi,
+              provider,
+            );
             const [balanceRaw, decimals] = await Promise.all([
               tokenContract.balanceOf(wallet.address),
               tokenContract.decimals(),
@@ -89,15 +98,16 @@ export class EVMBalanceProvider implements BalanceProvider {
 
             const balance = formatUnits(balanceRaw, decimals);
             const price = getPrice(token.symbol, priceInfo);
+            const balanceBN = new BigNumber(balance);
 
-            if (parseFloat(balance) > 0) {
+            if (balanceBN.isGreaterThan(0)) {
               return {
                 id: `${wallet.id}-${token.id}`,
                 walletId: wallet.id,
                 tokenId: token.id,
                 userId: null,
-                balance: parseFloat(balance).toFixed(4),
-                balanceUSD: (parseFloat(balance) * price).toFixed(2),
+                balance: balanceBN,
+                balanceUSD: balanceBN.times(price).toFixed(2),
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 previousBalances: [],
@@ -116,7 +126,10 @@ export class EVMBalanceProvider implements BalanceProvider {
         balances.push(...tokenBalances.filter((b) => b !== null));
         return balances;
       } catch (networkError) {
-        console.error(`Failed to fetch balances on ${network.name}`, networkError);
+        console.error(
+          `Failed to fetch balances on ${network.name}`,
+          networkError,
+        );
         return [];
       }
     });
@@ -140,7 +153,7 @@ export class EVMBalanceProvider implements BalanceProvider {
 
     try {
       const provider = new JsonRpcProvider(network.rpcUrl);
-      let newBalanceValue = "0.0000";
+      let newBalanceValue = new BigNumber(0);
       let newBalanceUsd = "0.00";
       let price = getPrice(token.symbol, priceInfo);
       if (!price || price === 0) {
@@ -149,8 +162,8 @@ export class EVMBalanceProvider implements BalanceProvider {
 
       if (token.address === ZERO_ADDRESS) {
         const nativeBalanceWei = await provider.getBalance(wallet.address);
-        const nativeBalance = formatEther(nativeBalanceWei);
-        newBalanceValue = parseFloat(nativeBalance).toFixed(4);
+        const nativeBalance = new BigNumber(formatEther(nativeBalanceWei));
+        newBalanceValue = nativeBalance;
       } else {
         const erc20Abi = [
           "function balanceOf(address owner) view returns (uint256)",
@@ -162,12 +175,12 @@ export class EVMBalanceProvider implements BalanceProvider {
           tokenContract.decimals(),
         ]);
         const balance = formatUnits(balanceRaw, decimals);
-        newBalanceValue = parseFloat(balance).toFixed(4);
+        newBalanceValue = new BigNumber(balance);
       }
 
-      newBalanceUsd = (parseFloat(newBalanceValue) * price).toFixed(2);
+      newBalanceUsd = (newBalanceValue.times(price)).toFixed(2);
 
-      if (parseFloat(newBalanceValue) > 0) {
+      if (newBalanceValue.gt(0)) {
         return {
           id: `${wallet.id}-${token.id}`,
           walletId: wallet.id,

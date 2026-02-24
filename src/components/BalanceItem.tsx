@@ -3,6 +3,7 @@
 import { Balance, Token, Wallet, EVMNetwork } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BigNumber } from "bignumber.js";
 
 interface BalanceItemProps {
   balance: Balance;
@@ -10,6 +11,17 @@ interface BalanceItemProps {
   wallet?: Wallet;
   network?: EVMNetwork;
 }
+
+/**
+ * Format a balance value (BigNumber or string) for display
+ */
+const formatBalance = (value: BigNumber | string): string => {
+  const bn = typeof value === "string" ? new BigNumber(value) : value;
+  return bn.toNumber().toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  });
+};
 
 /**
  * BalanceItem - Displays a single balance entry
@@ -42,11 +54,7 @@ export function BalanceItem({
         </div>
         <div className="text-right">
           <p className="font-semibold">
-            {parseFloat(balance.balance).toLocaleString("en-US", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 6,
-            })}{" "}
-            {token.symbol}
+            {formatBalance(balance.balance)} {token.symbol}
           </p>
           <p className="text-sm text-muted-foreground">
             ${balance.balanceUSD}

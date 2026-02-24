@@ -3,6 +3,7 @@ import { formatUnits } from "ethers";
 import { TokenPriceInfo } from "../tokenService";
 import type { BalanceProvider } from "./types";
 import { ZERO_ADDRESS } from "@/lib/constants";
+import { BigNumber } from "bignumber.js";
 
 const getPrice = (
   symbol: string,
@@ -81,15 +82,16 @@ export class NearBalanceProvider implements BalanceProvider {
         nearPrice = await getPriceWithFallback("NEAR", priceInfo);
       }
 
-      if (nearBalance > 0) {
+      const nearBalanceBN = new BigNumber(nearBalance);
+      if (nearBalanceBN.isGreaterThan(0)) {
         const tokenId = `near-${ZERO_ADDRESS}`;
         newBalances.push({
           id: `${wallet.id}-${tokenId}`,
           walletId: wallet.id,
           tokenId,
           userId: null,
-          balance: nearBalance.toFixed(5),
-          balanceUSD: (nearBalance * nearPrice).toFixed(2),
+          balance: nearBalanceBN,
+          balanceUSD: nearBalanceBN.times(nearPrice).toFixed(2),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           previousBalances: [],
@@ -163,15 +165,16 @@ export class NearBalanceProvider implements BalanceProvider {
 
         const balance = formatUnits(balanceRaw, decimals);
         const price = getPrice(token.symbol, priceInfo);
+        const balanceBN = new BigNumber(balance);
 
-        if (parseFloat(balance) > 0) {
+        if (balanceBN.isGreaterThan(0)) {
           return {
             id: `${wallet.id}-${token.id}`,
             walletId: wallet.id,
             tokenId: token.id,
             userId: null,
-            balance: parseFloat(balance).toFixed(4),
-            balanceUSD: (parseFloat(balance) * price).toFixed(2),
+            balance: balanceBN,
+            balanceUSD: balanceBN.times(price).toFixed(2),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             previousBalances: [],

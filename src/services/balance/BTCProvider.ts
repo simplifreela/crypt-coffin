@@ -2,6 +2,7 @@ import { Wallet, Token, Balance, EVMNetwork } from "@/types";
 import { TokenPriceInfo } from "../tokenService";
 import { ZERO_ADDRESS } from "@/lib/constants";
 import type { BalanceProvider } from "./types";
+import { BigNumber } from "bignumber.js";
 
 const getPrice = (
   symbol: string,
@@ -56,7 +57,8 @@ export class BTCBalanceProvider implements BalanceProvider {
         btcPrice = await getPriceWithFallback("BTC", priceInfo);
       }
 
-      if (btcBalance > 0) {
+      const btcBalanceBN = new BigNumber(btcBalance);
+      if (btcBalanceBN.isGreaterThan(0)) {
         const tokenId = `btc-${ZERO_ADDRESS}`;
         return [
           {
@@ -64,8 +66,8 @@ export class BTCBalanceProvider implements BalanceProvider {
             walletId: wallet.id,
             tokenId: tokenId,
             userId: null,
-            balance: btcBalance.toFixed(8),
-            balanceUSD: (btcBalance * btcPrice).toFixed(2),
+            balance: btcBalanceBN,
+            balanceUSD: btcBalanceBN.times(btcPrice).toFixed(2),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             previousBalances: [],

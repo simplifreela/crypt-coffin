@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useWallets } from "@/hooks/useWallets";
 import { BrowserProvider } from "ethers";
+import { BigNumber } from "bignumber.js";
 import type { Token, EVMNetwork, Balance } from "@/types";
 
 interface PaymentModalProps {
@@ -26,7 +27,11 @@ interface PaymentModalProps {
   onClose: () => void;
   tokens: Token[];
   networks: EVMNetwork[];
-  onPaymentInitiate?: (token: Token, network: EVMNetwork, usdAmount: number) => Promise<void>;
+  onPaymentInitiate?: (
+    token: Token,
+    network: EVMNetwork,
+    usdAmount: number,
+  ) => Promise<void>;
 }
 
 const DONATION_AMOUNT_USD = 5;
@@ -48,7 +53,9 @@ export function PaymentModal({
   const [selectedNetwork, setSelectedNetwork] = useState<string>("");
   const [selectedToken, setSelectedToken] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [connectedWalletId, setConnectedWalletId] = useState<string | null>(null);
+  const [connectedWalletId, setConnectedWalletId] = useState<string | null>(
+    null,
+  );
 
   // Only show default EVM networks (no custom networks, no BTC/Solana/NEAR)
   const supportedNetworks = useMemo(
@@ -81,7 +88,12 @@ export function PaymentModal({
       .filter((t) => {
         // Only show tokens with non-zero balance
         const balance = tokenBalancesMap.get(t.id);
-        return balance && parseFloat(balance.balance) > 0;
+        if (!balance) return false;
+        const bn =
+          typeof balance.balance === "string"
+            ? new BigNumber(balance.balance)
+            : balance.balance;
+        return bn.isGreaterThan(0);
       });
   }, [selectedNetwork, tokens, tokenBalancesMap]);
 
@@ -98,7 +110,10 @@ export function PaymentModal({
         const provider = new BrowserProvider(window.ethereum as any);
         const signer = await provider.getSigner();
         const addr = await signer.getAddress();
-        const found = wallets.find((w) => w.address.toLowerCase() === addr.toLowerCase() && w.type === "evm");
+        const found = wallets.find(
+          (w) =>
+            w.address.toLowerCase() === addr.toLowerCase() && w.type === "evm",
+        );
         if (found) setConnectedWalletId(found.id);
       } catch (e) {
         setConnectedWalletId(null);
@@ -199,15 +214,21 @@ export function PaymentModal({
                 <SelectContent>
                   {tokensForNetwork.length === 0 ? (
                     <div className="p-2 text-sm text-muted-foreground">
-                      No {PAYMENT_TOKENS.join("/")} tokens found on {supportedNetworks.find((n) => n.id === selectedNetwork)?.name}
+                      No {PAYMENT_TOKENS.join("/")} tokens found on{" "}
+                      {
+                        supportedNetworks.find((n) => n.id === selectedNetwork)
+                          ?.name
+                      }
                     </div>
                   ) : (
                     tokensForNetwork.map((token) => {
                       const balance = tokenBalancesMap.get(token.id);
-                      const displayBalance = balance?.balance || "0.0000";
+                      const displayBalance =
+                        balance?.balance.toNumber().toFixed(4) || "0.0000";
                       return (
                         <SelectItem key={token.id} value={token.id}>
-                          {token.symbol} - {displayBalance} ({balance?.balanceUSD || "$0.00"})
+                          {token.symbol} - {displayBalance} (
+                          {balance?.balanceUSD || "$0.00"})
                         </SelectItem>
                       );
                     })
@@ -219,7 +240,9 @@ export function PaymentModal({
 
           <div className="rounded-lg border border-border bg-card p-3">
             <p className="text-sm text-muted-foreground">Amount to donate:</p>
-            <p className="text-xl font-semibold">${DONATION_AMOUNT_USD}.00 USD</p>
+            <p className="text-xl font-semibold">
+              ${DONATION_AMOUNT_USD}.00 USD
+            </p>
           </div>
 
           <div className="flex gap-2">

@@ -1,4 +1,6 @@
-export type WalletType = 'evm' | 'solana' | 'near' | 'btc';
+import { BigNumber } from "bignumber.js";
+
+export type WalletType = "evm" | "solana" | "near" | "btc";
 
 export interface User {
   id: string; // uuid from auth.uid()
@@ -20,7 +22,7 @@ export interface User {
     txHash: string;
     token: {
       address?: string; // to track the real token address
-      native?: boolean // true if it's a native token like BTC or ETH
+      native?: boolean; // true if it's a native token like BTC or ETH
       symbol: string;
       network: string;
     };
@@ -35,8 +37,7 @@ export interface Wallet {
   isWatched: boolean; // true if it's a watched wallet, false if connected
   userId?: string; // Foreign key to User
 }
-export type NewWallet = Omit<Wallet, 'id' | 'userId'>;
-
+export type NewWallet = Omit<Wallet, "id" | "userId">;
 
 export interface EVMNetwork {
   id: string; // uuid from DB for custom networks, chainId for default
@@ -47,7 +48,7 @@ export interface EVMNetwork {
   symbol: string;
   userId?: string; // Foreign key to User for custom networks
 }
-export type NewEVMNetwork = Omit<EVMNetwork, 'id' | 'userId' | 'isCustom'>;
+export type NewEVMNetwork = Omit<EVMNetwork, "id" | "userId" | "isCustom">;
 
 // Token is now a normalized entity representing a specific contract on a specific chain.
 // It does not contain user-specific information.
@@ -68,14 +69,14 @@ export interface Balance {
   walletId: string;
   tokenId: string;
   userId: string | null;
-  
+
   // Current balance for quick display
-  balance: string; 
-  balanceUSD: string;
-  
+  balance: BigNumber
+  balanceUSD: string; // Unformatted numeric string (e.g., "1234.56")
+
   createdAt: string;
   updatedAt: string;
-  
+
   // Historical data for charts
   previousBalances: {
     time: string;
@@ -98,4 +99,7 @@ export interface PortfolioOverview {
   updatedAt: string;
 }
 
-export type NewPortfolioOverview = Omit<PortfolioOverview, 'id' | 'userId' | 'createdAt' | 'updatedAt'>;
+export type NewPortfolioOverview = Omit<
+  PortfolioOverview,
+  "id" | "userId" | "createdAt" | "updatedAt"
+>;

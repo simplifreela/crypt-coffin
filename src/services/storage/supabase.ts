@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { BigNumber } from "bignumber.js";
 import type {
   Wallet,
   EVMNetwork,
@@ -27,6 +28,23 @@ export class SupabaseStorageProvider implements StorageProvider {
     } = await this.supabase.auth.getUser();
     if (!user) throw new Error("User not authenticated.");
     return user.id;
+  }
+
+  /**
+   * Serialize BigNumber instances to strings for DB storage
+   */
+  private serializeBalance(balance: BigNumber | string): string {
+    return typeof balance === 'string' ? balance : balance.toString();
+  }
+
+  /**
+   * Deserialize balance strings from DB back to BigNumber instances
+   */
+  private deserializeBalance(balance: Balance): Balance {
+    return {
+      ...balance,
+      balance: new BigNumber(balance.balance),
+    };
   }
 
   // Wallets
@@ -256,6 +274,7 @@ export class SupabaseStorageProvider implements StorageProvider {
       const transformedBalances = data.map((b) => ({
         ...b,
         id: `${b.walletId}-${b.tokenId}`,
+        balance: new BigNumber(b.balance),
       })) as Balance[];
 
       const latestTimestamp = Math.max(
@@ -394,7 +413,7 @@ export class SupabaseStorageProvider implements StorageProvider {
           walletId: original.walletId,
           tokenId: dbTokenId || original.tokenId,
           userId,
-          balance: original.balance,
+          balance: this.serializeBalance(original.balance),
           balanceUSD: original.balanceUSD,
           createdAt: original.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),

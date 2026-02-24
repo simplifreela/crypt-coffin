@@ -3,6 +3,7 @@ import { formatUnits } from "ethers";
 import { TokenPriceInfo } from "../tokenService";
 import type { BalanceProvider } from "./types";
 import { ZERO_ADDRESS } from "@/lib/constants";
+import { BigNumber } from "bignumber.js";
 
 const getPrice = (
   symbol: string,
@@ -76,15 +77,16 @@ export class SolanaBalanceProvider implements BalanceProvider {
             solPrice = await getPriceWithFallback("SOL", priceInfo);
           }
 
-          if (solBalance > 0.00000001) {
+          const solBalanceBN = new BigNumber(solBalance);
+          if (solBalanceBN.isGreaterThan(0.00000001)) {
             const tokenId = `solana-${ZERO_ADDRESS}`;
             newBalances.push({
               id: `${wallet.id}-${tokenId}`,
               walletId: wallet.id,
               tokenId,
               userId: null,
-              balance: solBalance.toFixed(4),
-              balanceUSD: (solBalance * solPrice).toFixed(2),
+              balance: solBalanceBN,
+              balanceUSD: solBalanceBN.times(solPrice).toFixed(2),
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               previousBalances: [],
@@ -128,15 +130,16 @@ export class SolanaBalanceProvider implements BalanceProvider {
         }
 
         const price = getPrice(token.symbol, priceInfo);
+        const totalBalanceBN = new BigNumber(totalBalance);
 
-        if (totalBalance > 0) {
+        if (totalBalanceBN.isGreaterThan(0)) {
           return {
             id: `${wallet.id}-${token.id}`,
             walletId: wallet.id,
             tokenId: token.id,
             userId: null,
-            balance: totalBalance.toFixed(4),
-            balanceUSD: (totalBalance * price).toFixed(2),
+            balance: totalBalanceBN,
+            balanceUSD: totalBalanceBN.times(price).toFixed(2),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             previousBalances: [],
