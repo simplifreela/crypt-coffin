@@ -753,6 +753,37 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     init();
   }, [init]);
 
+  // Listen to MetaMask network and account changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.ethereum) return;
+
+    const handleChainChanged = (chainIdHex: string) => {
+      console.log("Chain changed to:", chainIdHex);
+      // Reload or re-initialize to reflect new network
+      window.location.reload();
+    };
+
+    const handleAccountsChanged = (accounts: string[]) => {
+      console.log("Accounts changed:", accounts);
+      if (accounts.length === 0) {
+        // User disconnected wallet
+        setWallets([]);
+        setActiveWallet(null);
+      } else {
+        // Account switched, reload to ensure everything is in sync
+        window.location.reload();
+      }
+    };
+
+    window.ethereum.on("chainChanged", handleChainChanged);
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+
+    return () => {
+      window.ethereum.removeListener("chainChanged", handleChainChanged);
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+    };
+  }, []);
+
   useEffect(() => {
     if (!loading && wallets.length > 0 && !initialBalancesFetched.current) {
       wallets.forEach((wallet) => {

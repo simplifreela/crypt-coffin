@@ -123,39 +123,151 @@ export default function AuthButton() {
           tokens={tokens}
           networks={networks}
           onPaymentInitiate={async (token, network, usdAmount) => {
-            const donationAddress = process.env.NEXT_PUBLIC_DONATION_EVM_WALLET;
-            if (!donationAddress) throw new Error("Donation wallet not configured.");
-            if (!window.ethereum) throw new Error("No web3 provider available.");
+            try {
+              const donationAddress = process.env.NEXT_PUBLIC_DONATION_EVM_WALLET;
+              if (!donationAddress) throw new Error("Donation wallet not configured.");
+              if (!window.ethereum) throw new Error("No web3 provider available.");
 
-            if (token.address === ZERO_ADDRESS) {
-              throw new Error("Please use a stable token (USDT/USDC) for donation.");
+              if (token.address === ZERO_ADDRESS) {
+                throw new Error("Please use a stable token (USDT/USDC) for donation.");
+              }
+
+              console.log("Payment initiation:", {
+                tokenAddress: token.address,
+                tokenSymbol: token.symbol,
+                networkId: network.id,
+                networkName: network.name,
+                chainId: network.chainId,
+              });
+
+              const provider = new BrowserProvider(window.ethereum as any);
+              const signer = await provider.getSigner();
+              const signerAddress = await signer.getAddress();
+              let chainId = (await provider.getNetwork()).chainId;
+              
+              console.log("Connected to chain:", chainId, "Expected network chainId:", network.chainId);
+
+              // If on wrong network, request switch
+              if (network.chainId !== chainId) {
+                console.log(`Requesting switch from chain ${chainId} to ${network.chainId}`);
+                try {
+                  await (window.ethereum as any).request({
+                    method: "wallet_switchEthereumChain",
+                    params: [{ chainId: `0x${network.chainId.toString(16)}` }],
+                  });
+                  console.log("Network switched successfully");
+                  // Re-create provider after network switch
+                  const newProvider = new BrowserProvider(window.ethereum as any);
+                  chainId = (await newProvider.getNetwork()).chainId;
+                  console.log("New chain ID after switch:", chainId);
+                } catch (switchError: any) {
+                  // User rejected or chain doesn't exist
+                  if (switchError.code === 4902) {
+                    throw new Error(
+                      `Network ${network.name} not added to your wallet. Please add it manually.`
+                    );
+                  }
+                  if (switchError.code === 4001) {
+                    throw new Error("You rejected the network switch request.");
+                  }
+                  throw new Error(`Failed to switch network: ${switchError.message}`);
+                }
+              }
+              
+              const erc20Abi = [
+                "function transfer(address to, uint256 amount) returns (bool)",
+                "function decimals() view returns (uint8)",
+                "function balanceOf(address account) view returns (uint256)",
+              ];
+              
+              // Create fresh provider after potential network switch
+              const freshProvider = new BrowserProvider(window.ethereum as any);
+              const freshSigner = await freshProvider.getSigner();
+              const readOnlyContract = new Contract(token.address, erc20Abi, freshProvider);
+              
+              let decimals: number = 6;
+              try {
+                console.log("Fetching decimals for token at:", token.address);
+                decimals = await readOnlyContract.decimals();
+                console.log("Token decimals:", decimals);
+              } catch (e) {
+                console.error("Failed to fetch token decimals:", e);
+                console.warn("Using default decimals of 6");
+              }
+
+              // Calculate token amount: for a $5 donation, use 5 token units
+              const amount = parseUnits("5", decimals);
+              console.log("Transfer amount (in wei):", amount.toString());
+              
+              // Check balance before attempting transfer
+              let userBalance: bigint = 0n;
+              try {
+                console.log("Checking balance for address:", signerAddress);
+                userBalance = await readOnlyContract.balanceOf(signerAddress);
+                console.log("User balance:", userBalance.toString());
+              } catch (e) {
+                console.error("Failed to check balance:", e);
+                throw new Error("Could not verify your token balance. The token may not exist on this network.");
+              }
+
+              if (userBalance < amount) {
+                throw new Error(
+                  `Insufficient balance. You have ${userBalance.toString()} wei, need ${amount.toString()} wei (5 ${token.symbol})`
+                );
+              }
+
+              // Now execute transfer with fresh signer
+              const signerContract = new Contract(token.address, erc20Abi, freshSigner);
+              
+              let tx;
+              try {
+                console.log("Executing transfer to:", donationAddress);
+                tx = await signerContract.transfer(donationAddress, amount);
+                console.log("Transaction sent:", tx.hash);
+              } catch (e: any) {
+                console.error("Transfer execution error:", e);
+                const errorMsg = e?.reason || e?.message || "Transaction failed";
+                
+                if (errorMsg.includes("insufficient") || errorMsg.includes("balance")) {
+                  throw new Error(`Insufficient balance to complete transfer`);
+                }
+                if (errorMsg.includes("not a function")) {
+                  throw new Error(`Token contract does not support transfers. Is this a valid ERC20 token?`);
+                }
+                
+                throw new Error(`Transfer failed: ${errorMsg}`);
+              }
+
+              // Wait for receipt
+              console.log("Waiting for transaction receipt...");
+              const receipt = await tx.wait();
+              
+              if (!receipt) {
+                throw new Error("Transaction did not complete. Please try again.");
+              }
+
+              console.log("Transaction confirmed:", receipt.hash);
+
+              // Record the premium purchase
+              await recordPremiumPurchase(
+                token,
+                network,
+                usdAmount,
+                receipt.hash,
+                amount.toString(),
+              );
+
+              // After successful donation enable cloud sync
+              setStorageMode("cloud");
+              toast({
+                title: "Payment Successful!",
+                description: "Thank you for your donation. Cloud sync is now enabled.",
+              });
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : "Payment failed";
+              console.error("Payment error:", error);
+              throw new Error(errorMsg);
             }
-
-            const provider = new BrowserProvider(window.ethereum as any);
-            const signer = await provider.getSigner();
-            const erc20Abi = [
-              "function transfer(address to, uint256 amount) returns (bool)",
-              "function decimals() view returns (uint8)",
-            ];
-            const contract = new Contract(token.address, erc20Abi, signer);
-            const decimals = await contract.decimals();
-            const amount = parseUnits(usdAmount.toString(), decimals);
-            const tx = await contract.transfer(donationAddress, amount);
-            const receipt = await tx.wait();
-            
-            if (!receipt) throw new Error("Transaction failed");
-
-            // Record the premium purchase
-            await recordPremiumPurchase(
-              token,
-              network,
-              usdAmount,
-              receipt.hash,
-              amount.toString(),
-            );
-
-            // After successful donation enable cloud sync
-            setStorageMode("cloud");
           }}
         />
       </div>
