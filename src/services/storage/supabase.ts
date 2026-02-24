@@ -210,7 +210,7 @@ export class SupabaseStorageProvider implements StorageProvider {
 
       const { error } = await this.supabase
         .from("Token")
-        .upsert(normalizedBatch, { onConflict: ["address", "networkId"] });
+        .upsert(normalizedBatch, { onConflict: 'id' });
       if (error) {
         console.error("Error saving all tokens to Supabase:", error);
         throw new Error(error.message);
@@ -236,7 +236,7 @@ export class SupabaseStorageProvider implements StorageProvider {
       };
 
     const { error } = await this.supabase.from("Token").upsert(payload, {
-      onConflict: ["address", "networkId"],
+      onConflict: 'id',
     });
     if (error) throw error;
   }
