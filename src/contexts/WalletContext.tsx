@@ -796,6 +796,19 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [wallets, loading, fetchBalances]);
 
+  // Ensure any wallets missing a balances entry get a fetch (without balances in dependencies to avoid loop)
+  useEffect(() => {
+    if (wallets.length === 0) return;
+    for (const wallet of wallets) {
+      if (!balances.has(wallet.id)) {
+        // Wallet is missing from balances map, fetch it
+        fetchBalances(wallet).catch((e) => {
+          console.error(`Background fetch failed for wallet ${wallet.id}:`, e);
+        });
+      }
+    }
+  }, [wallets, fetchBalances]);
+
   const value: IWalletContext = {
     wallets,
     networks,
