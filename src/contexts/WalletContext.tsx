@@ -411,7 +411,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       });
       setUser(data.user);
 
-      // Check if user has active premium
+      // Check if user has active premium (defer to setStorageModeAndSync if needed)
       try {
         const { data: userData, error: userError } = await supabase
           .from("User")
@@ -436,8 +436,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
           if (hasActivePremium) {
             // Auto-enable cloud sync for premium users
-            console.log("Premium user detected, enabling cloud sync");
-            await setStorageModeAndSync("cloud", data.user);
+            console.log("Premium user detected, will enable cloud sync");
+            // Schedule cloud sync after wallets are synced
+            setTimeout(() => setStorageModeAndSync("cloud", data.user), 500);
           }
         }
       } catch (e) {
@@ -445,9 +446,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         console.error("Failed to check premium status:", e);
       }
 
-      // Auto-add connected wallet to user's wallets if not present
+      // Auto-add/sync connected wallet to user's wallets if not present
       try {
-        const existing = wallets.find(
+        // Refresh wallets from storage to ensure we have latest state after storage mode change
+        const currentDataService = dbService.getDataService(storageMode === "cloud" ? "cloud" : "local");
+        const currentWallets = await currentDataService.getWallets();
+        
+        const existing = currentWallets.find(
           (w) =>
             String(w.address).toLowerCase() ===
               String(walletAddress).toLowerCase() && w.type === "evm",
@@ -459,10 +464,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
             name: `MetaMask (${walletAddress.slice(0, 6)}...)`,
             isWatched: false,
           };
-          const newWallet = await dataService.addWallet(walletData);
+          const newWallet = await currentDataService.addWallet(walletData);
           setWallets((prev) => [...prev, newWallet]);
           fetchBalances(newWallet, true);
           setActiveWallet(newWallet);
+        } else {
+          // Wallet exists, just set as active
+          setActiveWallet(existing);
         }
       } catch (e) {
         // Non-blocking
@@ -678,14 +686,19 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         );
         await cloudProvider.saveAllTokens(masterTokenList);
 
-        // Sync wallets and networks
+        // Sync wallets and networks (addWallet handles deduplication)
         for (const wallet of localWallets) {
-          await cloudProvider.addWallet({
-            address: wallet.address,
-            name: wallet.name,
-            type: wallet.type,
-            isWatched: wallet.isWatched,
-          });
+          try {
+            await cloudProvider.addWallet({
+              address: wallet.address,
+              name: wallet.name,
+              type: wallet.type,
+              isWatched: wallet.isWatched,
+            });
+          } catch (e) {
+            // Log but don't fail entire sync if one wallet has issues
+            console.error(`Failed to sync wallet ${wallet.address}:`, e);
+          }
         }
         for (const network of localNetworks) {
           await cloudProvider.addCustomNetwork({
@@ -719,28 +732,18 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    const checkUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUser(user);
-      if (user) {
-        const storedMode = localStorage.getItem("storageMode");
-        if (storedMode === "cloud") {
-          setInternalStorageMode("cloud");
-        }
-      }
-    };
-
-    checkUser();
-
+    // Use onAuthStateChange as the single source of user state
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (event === "SIGNED_IN") {
-        // Do nothing here, wait for storage mode change to trigger re-init
+        // Check storage mode preference on login
+        const storedMode = localStorage.getItem("storageMode");
+        if (storedMode === "cloud") {
+          setInternalStorageMode("cloud");
+        }
       } else if (event === "SIGNED_OUT") {
         setInternalStorageMode("local");
         localStorage.removeItem("storageMode");
@@ -792,19 +795,6 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       initialBalancesFetched.current = true;
     }
   }, [wallets, loading, fetchBalances]);
-
-  // Ensure any wallets missing a balances entry get an initial fetch.
-  useEffect(() => {
-    if (wallets.length === 0) return;
-    for (const wallet of wallets) {
-      if (!balances.has(wallet.id)) {
-        // Kick off a fetch in background if we don't yet have a cached entry
-        fetchBalances(wallet).catch((e) => {
-          console.error(`Background fetch failed for wallet ${wallet.id}:`, e);
-        });
-      }
-    }
-  }, [wallets, balances, fetchBalances]);
 
   const value: IWalletContext = {
     wallets,

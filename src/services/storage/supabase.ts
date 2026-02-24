@@ -46,6 +46,20 @@ export class SupabaseStorageProvider implements StorageProvider {
 
   async addWallet(walletData: NewWallet): Promise<Wallet> {
     const userId = await this.getUserId();
+    
+    // Check if wallet already exists to prevent duplicates
+    const { data: existing } = await this.supabase
+      .from("Wallet")
+      .select("*")
+      .eq("userId", userId)
+      .eq("type", walletData.type)
+      .ilike("address", walletData.address); // Case-insensitive match
+    
+    if (existing && existing.length > 0) {
+      console.log("Wallet already exists, returning existing wallet");
+      return existing[0] as Wallet;
+    }
+    
     const { data, error } = await this.supabase
       .from("Wallet")
       .insert({ ...walletData, userId })

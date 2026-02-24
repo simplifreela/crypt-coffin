@@ -52,6 +52,18 @@ export class IndexedDBStorageProvider implements StorageProvider {
             // ignore normalization failures
         }
 
+        // Check if wallet already exists (case-insensitive and normalized)
+        const existing = wallets.find(
+            (w) =>
+                String(w.address).toLowerCase() === String(addr).toLowerCase() &&
+                w.type === walletData.type
+        );
+        
+        if (existing) {
+            console.log("Wallet already exists locally, returning existing wallet");
+            return existing;
+        }
+
         const newWallet: Wallet = {
             ...walletData,
             address: addr,
