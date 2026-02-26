@@ -1,5 +1,3 @@
-# Firebase Studio
+# Crypt Coffin
 
-This is a NextJS starter in Firebase Studio.
-
-To get started, take a look at src/app/page.tsx.
+We're under development. This tool started as a prototype prompt into [Firebase Studio](https://studio.firebase.google.com) and now we want to keep going. 
